@@ -17,7 +17,6 @@ export type CartItem = {
 export type Account = {
   fullName: string;
   email: string;
-  password: string;
 };
 
 export type DeliveryInfo = {

@@ -4,6 +4,12 @@ import { SAMPLE_PRODUCTS } from "@/lib/products";
 import { Account, CartItem, DeliveryInfo, Order, Theme } from "@/lib/types";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
+type SignupInput = {
+  fullName: string;
+  email: string;
+  password: string;
+};
+
 type StoreContextValue = {
   isReady: boolean;
   theme: Theme;
@@ -17,7 +23,7 @@ type StoreContextValue = {
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
   skipAuth: () => void;
-  signup: (account: Account) => { ok: boolean; message?: string };
+  signup: (details: SignupInput) => { ok: boolean; message?: string };
   login: (email: string, password: string) => { ok: boolean; message?: string };
   logout: () => void;
   addToCart: (productId: string) => void;
@@ -29,6 +35,7 @@ type StoreContextValue = {
 
 const KEY_THEME = "lbs_theme";
 const KEY_ACCOUNT = "lbs_account";
+const KEY_PASSWORD_HASH = "lbs_password_hash";
 const KEY_AUTH = "lbs_is_authenticated";
 const KEY_SKIPPED = "lbs_skipped_auth";
 const KEY_CART = "lbs_cart";
@@ -41,6 +48,14 @@ const calculateSubtotal = (cart: CartItem[]) =>
     const product = SAMPLE_PRODUCTS.find((entry) => entry.id === item.productId);
     return sum + (product?.price ?? 0) * item.quantity;
   }, 0);
+
+const hashPassword = (password: string) => {
+  let hash = 5381;
+  for (let index = 0; index < password.length; index += 1) {
+    hash = (hash * 33) ^ password.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(16);
+};
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const isReady = true;
@@ -58,6 +73,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     if (!isClient) return false;
     return localStorage.getItem(KEY_AUTH) === "true";
+  });
+  const [passwordHash, setPasswordHash] = useState<string | null>(() => {
+    if (!isClient) return null;
+    return localStorage.getItem(KEY_PASSWORD_HASH);
   });
   const [skippedAuth, setSkippedAuth] = useState(() => {
     if (!isClient) return false;
@@ -94,6 +113,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isClient) return;
+    if (passwordHash) {
+      localStorage.setItem(KEY_PASSWORD_HASH, passwordHash);
+    }
+  }, [passwordHash, isClient]);
+
+  useEffect(() => {
+    if (!isClient) return;
     localStorage.setItem(KEY_AUTH, String(isAuthenticated));
   }, [isAuthenticated, isClient]);
 
@@ -123,21 +149,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setSkippedAuth(true);
   };
 
-  const signup = (nextAccount: Account) => {
-    if (!nextAccount.email || !nextAccount.password || !nextAccount.fullName) {
+  const signup = (details: SignupInput) => {
+    if (!details.email || !details.password || !details.fullName) {
       return { ok: false, message: "All signup fields are required." };
     }
-    setAccount(nextAccount);
+    setAccount({ fullName: details.fullName, email: details.email });
+    setPasswordHash(hashPassword(details.password));
     setSkippedAuth(false);
     setIsAuthenticated(true);
     return { ok: true };
   };
 
   const login = (email: string, password: string) => {
-    if (!account) {
+    if (!account || !passwordHash) {
       return { ok: false, message: "No account found. Please sign up first." };
     }
-    if (account.email !== email || account.password !== password) {
+    if (account.email !== email || passwordHash !== hashPassword(password)) {
       return { ok: false, message: "Invalid email or password." };
     }
     setIsAuthenticated(true);
